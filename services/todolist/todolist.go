@@ -82,7 +82,7 @@ func NextDate(date, now time.Time, repeat string) (time.Time, error) {
 
 		weekdaysParts := strings.Split(repeatParts[1], ",")
 
-		weekdays := make([]int, len(weekdaysParts))
+		weekdays := make([]time.Weekday, len(weekdaysParts))
 		for i, day := range weekdaysParts {
 			weekday, err := strconv.Atoi(day)
 			if err != nil {
@@ -93,25 +93,19 @@ func NextDate(date, now time.Time, repeat string) (time.Time, error) {
 				return nextDate, errors.New("wrong weekday")
 			}
 
-			weekdays[i] = weekday
-		}
-
-		tempNextDate := nextDate
-
-		for {
-			tempNextDate = tempNextDate.AddDate(0, 0, 1)
-
-			for _, weekday := range weekdays {
-				isBothSunday := weekday == 7 && tempNextDate.Weekday() == 0
-
-				if int(tempNextDate.Weekday()) == (weekday) || isBothSunday {
-					nextDate = tempNextDate
-
-					break
-				}
+			if weekday == 7 {
+				weekday = 0
 			}
 
-			if nextDate.After(now) {
+			weekdays[i] = time.Weekday(weekday)
+		}
+
+		nextDate = now
+
+		for {
+			nextDate = nextDate.AddDate(0, 0, 1)
+
+			if slices.Contains(weekdays, nextDate.Weekday()) && nextDate.After(now) {
 				break
 			}
 		}
@@ -131,6 +125,12 @@ func NextDate(date, now time.Time, repeat string) (time.Time, error) {
 
 			if dayNum < -2 || dayNum > 31 || dayNum == 0 {
 				return nextDate, errors.New("wrong day of month")
+			}
+
+			// В time.Date(год, месяц, день, часы, минуты, секунды, микросекунды, локаль)
+			// при день = 0 будет последнее число предыдущего месяца, а при день = -1 предпоследний день предыдущего месяца
+			if dayNum < 0 {
+				dayNum++
 			}
 
 			days[i] = dayNum
@@ -162,26 +162,36 @@ func NextDate(date, now time.Time, repeat string) (time.Time, error) {
 
 		year, _, _ := nextDate.Date()
 		breaker := false
+		nextDates := make([]time.Time, 0)
 
 		for !breaker {
 			for _, monthNum := range months {
-				for _, dayNum := range days {
-					daySetter := dayNum
-					if daySetter < 0 {
-						daySetter++
+				for _, day := range days {
+					monthToSet := time.Month(monthNum)
+
+					// В time.Date(год, месяц, день, часы, минуты, секунды, микросекунды, локаль)
+					// при день = 0 будет последнее число предыдущего месяца, а при день = -1 предпоследний день предыдущего месяца
+					if day <= 0 {
+						monthToSet = time.Month(monthNum + 1)
 					}
 
-					tempDate := time.Date(year, time.Month(monthNum), daySetter, 0, 0, 0, 0, nextDate.Location())
+					dateToCheck := time.Date(year, monthToSet, day, 0, 0, 0, 0, nextDate.Location())
 
-					if tempDate.After(now) && tempDate.After(date) && (tempDate.Month() == time.Month(monthNum) || tempDate.Month() == time.Month(monthNum)-1) {
-						nextDate = tempDate
-						breaker = true
-
-						break
+					if dateToCheck.Month() == time.Month(monthNum) {
+						nextDates = append(nextDates, dateToCheck)
 					}
 				}
+			}
 
-				if breaker {
+			slices.SortFunc(nextDates, func(a, b time.Time) int {
+				return int(a.Unix() - b.Unix())
+			})
+
+			for _, d := range nextDates {
+				if d.After(now) && d.After(date) {
+					nextDate = d
+					breaker = true
+
 					break
 				}
 			}

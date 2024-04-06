@@ -31,7 +31,7 @@ func New() *Config {
 
 func (c *Config) parseFlags() {
 	flag.StringVar(&c.Port, "httport", "7540", "")
-	flag.StringVar(&c.DBFile, "dbfile", "../scheduler.db", "")
+	flag.StringVar(&c.DBFile, "dbfile", "./data/scheduler.db", "")
 
 	flag.Parse()
 }
