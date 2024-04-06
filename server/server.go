@@ -10,8 +10,11 @@ import (
 	"go_todo_final/transform"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -61,13 +64,15 @@ func (s *Server) Start() error {
 func (s *Server) setupHandlers() {
 	http.Handle("/", http.FileServer(http.Dir(webDir)))
 
+	http.HandleFunc("POST /api/signin", loginHandler)
+
 	http.HandleFunc("GET /api/nextdate", s.nextDateHandler)
-	http.HandleFunc("POST /api/task/done", s.taskDoneHandler)
-	http.HandleFunc("DELETE /api/task", s.deleteTaskHandler)
-	http.HandleFunc("POST /api/task", s.addTaskHandler)
-	http.HandleFunc("GET /api/task", s.getTaskByIdHandler)
-	http.HandleFunc("PUT /api/task", s.updateTaskHandler)
-	http.HandleFunc("GET /api/tasks", s.getTasksHandler)
+	http.HandleFunc("POST /api/task/done", auth(s.taskDoneHandler))
+	http.HandleFunc("DELETE /api/task", auth(s.deleteTaskHandler))
+	http.HandleFunc("POST /api/task", auth(s.addTaskHandler))
+	http.HandleFunc("GET /api/task", auth(s.getTaskByIdHandler))
+	http.HandleFunc("PUT /api/task", auth(s.updateTaskHandler))
+	http.HandleFunc("GET /api/tasks", auth(s.getTasksHandler))
 }
 
 func (s *Server) Stop(ctx context.Context) error {
@@ -281,4 +286,74 @@ func (s *Server) search(searchQuery string) ([]model.Task, error) {
 	}
 
 	return s.todoList.GetTasksByDate(date.Format("20060102"))
+}
+
+// По-хорошему, секретный ключ должен храниться в переменных окружения, куда
+// он попадёт из хранилища секретов, но раз уж всё упрощённо.
+const secretKey = "secret"
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	var incomingPassword model.Password
+
+	if err := json.NewDecoder(r.Body).Decode(&incomingPassword); err != nil {
+		http.Error(w, `{"error":"Неверный пароль"}`, http.StatusUnauthorized)
+		log.Println("json Decoder:", err)
+
+		return
+	}
+
+	if incomingPassword.Password != os.Getenv("TODO_PASSWORD") {
+		http.Error(w, `{"error":"Неверный пароль"}`, http.StatusUnauthorized)
+
+		return
+	}
+
+	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"exp": time.Now().Add(8 * time.Hour).Unix(),
+		"iat": time.Now().Unix(),
+	})
+
+	token, err := jwtToken.SignedString([]byte(secretKey))
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		log.Println("jwt SignedString:", err)
+
+		return
+	}
+
+	w.Write([]byte(fmt.Sprintf(`{"token": "%s"}`, token)))
+}
+
+func auth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		pass := os.Getenv("TODO_PASSWORD")
+		if len(pass) > 0 {
+			var incomingJwt string
+
+			cookie, err := r.Cookie("token")
+			if err == nil {
+				incomingJwt = cookie.Value
+			}
+
+			jwtToken, err := jwt.Parse(incomingJwt, func(t *jwt.Token) (interface{}, error) {
+				return []byte(secretKey), nil
+			})
+			if err != nil {
+				http.Error(w, "Authentification required", http.StatusUnauthorized)
+				log.Println("jwt Parse:", err)
+
+				return
+			}
+
+			if !jwtToken.Valid {
+				http.Error(w, "Authentification required", http.StatusUnauthorized)
+
+				return
+			}
+		}
+
+		next(w, r)
+	}
 }

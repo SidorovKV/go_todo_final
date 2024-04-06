@@ -19,3 +19,7 @@ type TaskDTO struct {
 type ResponseTasks struct {
 	Tasks []TaskDTO `json:"tasks"`
 }
+
+type Password struct {
+	Password string `json:"password"`
+}
