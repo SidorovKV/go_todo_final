@@ -13,7 +13,9 @@
 
 Запуск контейнера
 
-`docker run -p $TODO_PORT:$TODO_PORT --volume={local/path/to/db/dir}:/app/data:rw {tag/from/build/step}`
+`docker run -p $TODO_PORT:$TODO_PORT --volume=$(pwd):/app/data:rw todoshka:v1`
+
+`$(pwd)` - можно заменить на существующую директорию, где будет храниться файл бд
 
 Затем в браузере переходим по адресу `http://127.0.0.1:7540/`
 При запросе пароля вводим выбранный пароль.

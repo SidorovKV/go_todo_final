@@ -9,6 +9,7 @@ COPY . .
 
 # Install gcc
 RUN apk add build-base
+RUN go mod download
 
 RUN CGO_ENABLED=1 GOOS=linux go build -a -o todoshka ./cmd/main.go
 

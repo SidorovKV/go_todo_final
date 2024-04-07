@@ -30,6 +30,11 @@ func New(cfg *config.Config) (*Storage, error) {
 		return nil, fmt.Errorf("tryCreateTable: %w", err)
 	}
 
+	err = os.Chmod(cfg.DBFile, 0777)
+	if err != nil {
+		return nil, fmt.Errorf("chmod: %w", err)
+	}
+
 	return s, nil
 }
 
